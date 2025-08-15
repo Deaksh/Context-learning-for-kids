@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow_hub as hub
 import numpy as np
 import os
+from PIL import Image
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 0 = all logs, 1 = info, 2 = warnings, 3 = errors only
 
 # Load MobileNet model from TF Hub
