@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow_hub as hub
 import numpy as np
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # 0 = all logs, 1 = info, 2 = warnings, 3 = errors only
 
 # Load MobileNet model from TF Hub
 model = hub.load("https://tfhub.dev/google/tf2-preview/mobilenet_v2/classification/4")
