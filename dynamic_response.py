@@ -1,27 +1,68 @@
-import os
 from groq import Groq
+
+# dynamic_response.py
+import os
+import requests
 from dotenv import load_dotenv
 load_dotenv()
 
-client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Maintain conversation state (list of messages)
-conversation_history = [
-    {"role": "system", "content": "You are a fun educational assistant for kids. Respond helpfully and kindly."}
-]
+def _chat(messages, model="llama-3.1-8b-instant"):
+    """
+    Minimal Groq Chat Completions call.
+    """
+    if not GROQ_API_KEY:
+        # Fallback so app still works without a key
+        return "I couldn't reach the AI service. Please set GROQ_API_KEY."
 
-def generate_response(user_message):
-    # Add user message to the conversation
-    conversation_history.append({"role": "user", "content": user_message})
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.4,
+        "max_tokens": 512,
+    }
+    r = requests.post(url, headers=headers, json=payload, timeout=45)
+    r.raise_for_status()
+    data = r.json()
+    return data["choices"][0]["message"]["content"].strip()
 
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=conversation_history
+def generate_response(object_label: str, question: str = "", history=None) -> str:
+    """
+    If question provided, answer it using the image context (object_label).
+    Otherwise, provide an educational, kid-friendly explanation of the object.
+    history: optional list of {"role": "user"|"assistant", "content": "..."}
+    """
+    sys = (
+        "You are a friendly, educational tutor for kids. "
+        "Explain concepts simply and accurately. Keep answers concise."
     )
 
-    assistant_message = completion.choices[0].message.content.strip()
+    base = [
+        {"role": "system", "content": sys},
+        {"role": "user", "content": f"The image contains: {object_label}."},
+    ]
 
-    # Add assistant's reply to the history
-    conversation_history.append({"role": "assistant", "content": assistant_message})
+    if history and isinstance(history, list):
+        base.extend(history)
 
-    return assistant_message
+    if question:
+        base.append(
+            {"role": "user", "content": f"Question about this image: {question}"}
+        )
+        prompt = base
+    else:
+        base.append(
+            {"role": "user", "content": "Teach me something interesting about it."}
+        )
+        prompt = base
+
+    try:
+        return _chat(prompt)
+    except Exception as e:
+        return f"(AI error) {e}"
