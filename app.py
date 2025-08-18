@@ -2,14 +2,13 @@
 import io
 import json
 import logging
-import math
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from image_recognition import recognize_image
 from dynamic_response import generate_response
-from text_to_speech import speak  # keep even if iOS TTS is used; harmless
+from text_to_speech import speak
 
 from PIL import Image
 import numpy as np
@@ -23,24 +22,24 @@ app = FastAPI()
 # ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten later
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------- Helpers: dominant color ----------
+# ---------- Helpers ----------
 NAMED_COLORS = {
-    "red":        (220, 20, 60),
-    "orange":     (255, 140, 0),
-    "yellow":     (255, 215, 0),
-    "green":      (34, 139, 34),
-    "blue":       (30, 144, 255),
-    "purple":     (138, 43, 226),
-    "pink":       (255, 105, 180),
-    "brown":      (139, 69, 19),
-    "black":      (0, 0, 0),
-    "white":      (245, 245, 245),
-    "gray":       (128, 128, 128),
+    "red": (220, 20, 60),
+    "orange": (255, 140, 0),
+    "yellow": (255, 215, 0),
+    "green": (34, 139, 34),
+    "blue": (30, 144, 255),
+    "purple": (138, 43, 226),
+    "pink": (255, 105, 180),
+    "brown": (139, 69, 19),
+    "black": (0, 0, 0),
+    "white": (245, 245, 245),
+    "gray": (128, 128, 128),
 }
 
 def closest_named_color(rgb):
@@ -58,17 +57,21 @@ def get_dominant_color_name_from_bytes(image_bytes: bytes) -> str:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         img = img.resize((64, 64))
         arr = np.asarray(img).reshape(-1, 3)
-
-        # Simple quantization to reduce noise
         q = (arr // 32) * 32
-        # Find modal (most frequent) color
         colors, counts = np.unique(q, axis=0, return_counts=True)
         dominant = colors[counts.argmax()]
-        color_name = closest_named_color(tuple(int(x) for x in dominant))
-        return color_name
+        return closest_named_color(tuple(int(x) for x in dominant))
     except Exception as e:
         logger.warning(f"Color extraction failed: {e}")
         return ""
+
+def resize_image(image_bytes: bytes, max_size=(512, 512)) -> bytes:
+    """Resize + compress image to avoid network/processing errors"""
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    img.thumbnail(max_size, Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    img.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
 
 # ---------- Routes ----------
 @app.get("/")
@@ -81,18 +84,14 @@ async def analyze_image(file: UploadFile = File(...)):
         if not file:
             return JSONResponse({"error": "No file uploaded"}, status_code=400)
 
-        image_bytes = await file.read()
-        logger.info(f"Received image: {file.filename}, size={len(image_bytes)} bytes")
+        raw_bytes = await file.read()
+        image_bytes = resize_image(raw_bytes)  # 🔑 resize here
+        logger.info(f"Received image: {file.filename}, resized size={len(image_bytes)} bytes")
 
-        # Object label
         object_label = recognize_image(io.BytesIO(image_bytes))
-        logger.info(f"Object recognized: {object_label}")
-
-        # Visual facts
         dom_color = get_dominant_color_name_from_bytes(image_bytes)
         visual_facts = {"dominant_color": dom_color} if dom_color else {}
 
-        # AI response
         try:
             ai_response = generate_response(
                 object_label=object_label,
@@ -123,12 +122,11 @@ async def chat_about_image(
         if not file:
             return JSONResponse({"error": "No file uploaded"}, status_code=400)
 
-        image_bytes = await file.read()
-        logger.info(f"Chat image received: {file.filename}, size={len(image_bytes)} bytes")
+        raw_bytes = await file.read()
+        image_bytes = resize_image(raw_bytes)  # 🔑 resize here
+        logger.info(f"Chat image received: {file.filename}, resized size={len(image_bytes)} bytes")
 
         object_label = recognize_image(io.BytesIO(image_bytes))
-        logger.info(f"Object recognized for chat: {object_label}")
-
         dom_color = get_dominant_color_name_from_bytes(image_bytes)
         visual_facts = {"dominant_color": dom_color} if dom_color else {}
 
@@ -136,12 +134,9 @@ async def chat_about_image(
         if history:
             try:
                 parsed_history = json.loads(history)
-                logger.info(f"History parsed successfully")
             except Exception as e:
                 logger.warning(f"History parse failed: {e}")
-                parsed_history = None
 
-        # If question is about color, answer directly using visual fact
         if question and "color" in question.lower():
             if dom_color:
                 direct = f"The dominant color appears to be {dom_color}."
@@ -178,7 +173,7 @@ async def chat_about_image(
 @app.post("/get_speech")
 async def get_speech(text: str = Form(...)):
     try:
-        if not text or text.strip() == "":
+        if not text.strip():
             return JSONResponse({"error": "No text provided"}, status_code=400)
         audio_bytes = speak(text)
         return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
