@@ -1,245 +1,191 @@
 # app.py
 import io
 import json
-import base64
 import logging
-from typing import Optional
-
+import math
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from image_recognition import recognize_image
 from dynamic_response import generate_response
-from text_to_speech import speak
+from text_to_speech import speak  # keep even if iOS TTS is used; harmless
 
-# ---------------------------
-# Logging
-# ---------------------------
+from PIL import Image
+import numpy as np
+
+# ---------- Logging ----------
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("backend")
+logger = logging.getLogger(__name__)
 
-# ---------------------------
-# App & Middleware
-# ---------------------------
 app = FastAPI()
 
-# Allow CORS for iOS app requests (tighten later)
+# ---------- CORS ----------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # TODO: Restrict to your app domain/bundle later
+    allow_origins=["*"],   # tighten later
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=True,
 )
 
-# GZip large responses (helpful for audio / larger JSON)
-app.add_middleware(GZipMiddleware, minimum_size=1024)
+# ---------- Helpers: dominant color ----------
+NAMED_COLORS = {
+    "red":        (220, 20, 60),
+    "orange":     (255, 140, 0),
+    "yellow":     (255, 215, 0),
+    "green":      (34, 139, 34),
+    "blue":       (30, 144, 255),
+    "purple":     (138, 43, 226),
+    "pink":       (255, 105, 180),
+    "brown":      (139, 69, 19),
+    "black":      (0, 0, 0),
+    "white":      (245, 245, 245),
+    "gray":       (128, 128, 128),
+}
 
+def closest_named_color(rgb):
+    r, g, b = rgb
+    best_name, best_dist = None, 1e9
+    for name, (R, G, B) in NAMED_COLORS.items():
+        d = (r - R) ** 2 + (g - G) ** 2 + (b - B) ** 2
+        if d < best_dist:
+            best_dist = d
+            best_name = name
+    return best_name
 
+def get_dominant_color_name_from_bytes(image_bytes: bytes) -> str:
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = img.resize((64, 64))
+        arr = np.asarray(img).reshape(-1, 3)
+
+        # Simple quantization to reduce noise
+        q = (arr // 32) * 32
+        # Find modal (most frequent) color
+        colors, counts = np.unique(q, axis=0, return_counts=True)
+        dominant = colors[counts.argmax()]
+        color_name = closest_named_color(tuple(int(x) for x in dominant))
+        return color_name
+    except Exception as e:
+        logger.warning(f"Color extraction failed: {e}")
+        return ""
+
+# ---------- Routes ----------
 @app.get("/")
 async def root():
-    return {"message": "Backend is running. Use /analyze_image, /chat_about_image or /analyze_image_base64."}
+    return {"message": "Backend is running. Use /analyze_image or /chat_about_image."}
 
-
-# ---- Helpers ----
-async def _read_upload_file(upload: UploadFile) -> bytes:
-    """Safely read bytes from an UploadFile with logging."""
-    content = await upload.read()
-    logger.info(f"Uploaded file: name={upload.filename!r}, size={len(content)} bytes, type={upload.content_type}")
-    return content
-
-
-def _safe_log(prefix: str, text: Optional[str], max_len: int = 160) -> None:
-    """Log first part of a possibly long string."""
-    if text is None:
-        logger.info(f"{prefix}: None")
-        return
-    clipped = (text[:max_len] + "…") if len(text) > max_len else text
-    logger.info(f"{prefix}: {clipped}")
-
-
-# ---------------------------------------------------------
-# 1) Analyze image (multipart form) — accepts 'file' or 'image'
-# ---------------------------------------------------------
 @app.post("/analyze_image")
-async def analyze_image(
-    file: Optional[UploadFile] = File(None),     # preferred field name
-    image: Optional[UploadFile] = File(None),    # fallback field name if client sent 'image'
-):
+async def analyze_image(file: UploadFile = File(...)):
     try:
-        upload = file or image
-        if not upload:
-            return JSONResponse(content={"error": "No file uploaded (field must be 'file' or 'image')."}, status_code=400)
+        if not file:
+            return JSONResponse({"error": "No file uploaded"}, status_code=400)
 
-        image_bytes = await _read_upload_file(upload)
-        image_stream = io.BytesIO(image_bytes)
+        image_bytes = await file.read()
+        logger.info(f"Received image: {file.filename}, size={len(image_bytes)} bytes")
 
-        # 1) Recognize object
-        object_label = recognize_image(image_stream)
-        _safe_log("Object recognized", object_label)
+        # Object label
+        object_label = recognize_image(io.BytesIO(image_bytes))
+        logger.info(f"Object recognized: {object_label}")
 
-        # 2) Generate AI response
+        # Visual facts
+        dom_color = get_dominant_color_name_from_bytes(image_bytes)
+        visual_facts = {"dominant_color": dom_color} if dom_color else {}
+
+        # AI response
         try:
-            ai_response = generate_response(object_label=object_label)
+            ai_response = generate_response(
+                object_label=object_label,
+                question="",
+                history=None,
+                visual_facts=visual_facts
+            )
         except Exception as e:
-            logger.exception("AI generation failed")
+            logger.error(f"AI generation failed: {e}")
             ai_response = "Sorry, I couldn't generate a response."
 
-        _safe_log("AI response", ai_response)
-
-        return JSONResponse(content={
+        return JSONResponse({
             "object_label": object_label,
+            "visual_facts": visual_facts,
             "ai_response": ai_response
         })
-
     except Exception as e:
-        logger.exception("Error in /analyze_image")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        logger.error(f"Error in /analyze_image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-
-# ------------------------------------------------------------------
-# 2) Chat about image (multipart form) — accepts 'file' or 'image'
-# ------------------------------------------------------------------
 @app.post("/chat_about_image")
 async def chat_about_image(
-    file: Optional[UploadFile] = File(None),
-    image: Optional[UploadFile] = File(None),
+    file: UploadFile = File(...),
     question: str = Form(""),
-    history: Optional[str] = Form(None),   # JSON string from client (optional)
+    history: str | None = Form(None),
 ):
     try:
-        upload = file or image
-        if not upload:
-            return JSONResponse(content={"error": "No file uploaded (field must be 'file' or 'image')."}, status_code=400)
+        if not file:
+            return JSONResponse({"error": "No file uploaded"}, status_code=400)
 
-        image_bytes = await _read_upload_file(upload)
-        image_stream = io.BytesIO(image_bytes)
+        image_bytes = await file.read()
+        logger.info(f"Chat image received: {file.filename}, size={len(image_bytes)} bytes")
 
-        # 1) Recognize object
-        object_label = recognize_image(image_stream)
-        _safe_log("Object recognized (chat)", object_label)
-        _safe_log("Question", question)
+        object_label = recognize_image(io.BytesIO(image_bytes))
+        logger.info(f"Object recognized for chat: {object_label}")
 
-        # 2) Parse conversation history if provided
+        dom_color = get_dominant_color_name_from_bytes(image_bytes)
+        visual_facts = {"dominant_color": dom_color} if dom_color else {}
+
         parsed_history = None
         if history:
             try:
                 parsed_history = json.loads(history)
-                logger.info("History parsed successfully")
+                logger.info(f"History parsed successfully")
             except Exception as e:
-                logger.warning(f"Failed to parse history JSON: {e}")
+                logger.warning(f"History parse failed: {e}")
                 parsed_history = None
 
-        # 3) Generate AI response
+        # If question is about color, answer directly using visual fact
+        if question and "color" in question.lower():
+            if dom_color:
+                direct = f"The dominant color appears to be {dom_color}."
+            else:
+                direct = "I couldn't reliably detect the color from the image."
+            return JSONResponse({
+                "object_label": object_label,
+                "question": question,
+                "visual_facts": visual_facts,
+                "ai_response": direct
+            })
+
         try:
             ai_response = generate_response(
                 object_label=object_label,
                 question=question,
-                history=parsed_history
+                history=parsed_history,
+                visual_facts=visual_facts
             )
         except Exception as e:
-            logger.exception("AI chat generation failed")
+            logger.error(f"AI chat generation failed: {e}")
             ai_response = "Sorry, I couldn't generate a response."
 
-        _safe_log("AI response (chat)", ai_response)
-
-        return JSONResponse(content={
+        return JSONResponse({
             "object_label": object_label,
             "question": question,
+            "visual_facts": visual_facts,
             "ai_response": ai_response
         })
-
     except Exception as e:
-        logger.exception("Error in /chat_about_image")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
-# ----------------------------------------------------------------------
-# 3) Analyze image via JSON base64 (avoids multipart boundary issues)
-# ----------------------------------------------------------------------
-from pydantic import BaseModel
-
-class AnalyzeBase64Request(BaseModel):
-    image_base64: str                 # base64 data (data URL or raw base64)
-    question: Optional[str] = ""
-    history: Optional[list] = None    # list of {"role": "...", "content": "..."}
-
-@app.post("/analyze_image_base64")
-async def analyze_image_base64(req: AnalyzeBase64Request):
-    try:
-        # Accept both "data:image/jpeg;base64,..." and raw base64
-        b64_str = req.image_base64.split(",", 1)[-1] if "," in req.image_base64 else req.image_base64
-        image_bytes = base64.b64decode(b64_str)
-        logger.info(f"Received base64 image, size={len(image_bytes)} bytes")
-
-        image_stream = io.BytesIO(image_bytes)
-
-        # 1) Recognize
-        object_label = recognize_image(image_stream)
-        _safe_log("Object recognized (b64)", object_label)
-
-        # 2) Generate AI response
-        try:
-            ai_response = generate_response(
-                object_label=object_label,
-                question=req.question or "",
-                history=req.history if isinstance(req.history, list) else None
-            )
-        except Exception:
-            logger.exception("AI generation (b64) failed")
-            ai_response = "Sorry, I couldn't generate a response."
-
-        _safe_log("AI response (b64)", ai_response)
-
-        return JSONResponse(content={
-            "object_label": object_label,
-            "question": req.question or "",
-            "ai_response": ai_response
-        })
-
-    except Exception as e:
-        logger.exception("Error in /analyze_image_base64")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
-# -----------------------------------
-# 4) Text-to-Speech (form or JSON)
-# -----------------------------------
-class SpeechRequest(BaseModel):
-    text: str
+        logger.error(f"Error in /chat_about_image: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/get_speech")
-async def get_speech(
-    text: Optional[str] = Form(None)
-):
+async def get_speech(text: str = Form(...)):
     try:
-        if text is None:
-            # Try JSON body if not provided as Form
-            # (FastAPI will parse JSON automatically via request body model, but we keep this single endpoint simple)
-            return JSONResponse(content={"error": "No text provided"}, status_code=400)
-
-        txt = text.strip()
-        if not txt:
-            return JSONResponse(content={"error": "No text provided"}, status_code=400)
-
-        _safe_log("Generating speech for text", txt)
-
-        audio_bytes = speak(txt)
-        headers = {
-            "Content-Disposition": 'inline; filename="speech.mp3"'
-        }
-        return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg", headers=headers)
-
+        if not text or text.strip() == "":
+            return JSONResponse({"error": "No text provided"}, status_code=400)
+        audio_bytes = speak(text)
+        return StreamingResponse(io.BytesIO(audio_bytes), media_type="audio/mpeg")
     except Exception as e:
-        logger.exception("Error in /get_speech")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        logger.error(f"Error in /get_speech: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
 
-
-# ---------------------------
-# Uvicorn entrypoint (local)
-# ---------------------------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
