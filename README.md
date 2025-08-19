@@ -24,7 +24,19 @@ Kids can **take a picture or upload an image**, then **chat with an AI assistant
 ---
 
 ## 📸 Screenshots
-<img width="200" height="200" alt="IMG_2294" src="https://github.com/user-attachments/assets/da6f2bfd-b8a5-4fbb-9761-219500ae8c9c" />
+<img width="150" height="200" alt="IMG_2294" src="https://github.com/user-attachments/assets/da6f2bfd-b8a5-4fbb-9761-219500ae8c9c" />
+<img width="150" height="200" alt="IMG_2295" src="https://github.com/user-attachments/assets/101a47de-fd4e-4bc5-8e94-2e87b8a00768" />
+<img width="150" height="200" alt="IMG_2296" src="https://github.com/user-attachments/assets/3609e577-51a5-4dca-8938-6cf55eeec102" />
+<img width="150" height="200" alt="IMG_2297" src="https://github.com/user-attachments/assets/e2fab88a-7020-430b-8fab-69b1275aedd9" />
+<img width="150" height="200" alt="IMG_2298" src="https://github.com/user-attachments/assets/9d7b6654-56f7-4fcc-897b-a7a5e284c905" />
+<img width="150" height="200" alt="IMG_2299" src="https://github.com/user-attachments/assets/2def488c-215f-40f9-876a-340d156faab0" />
+<img width="150" height="200" alt="IMG_2300" src="https://github.com/user-attachments/assets/4a4b909f-2bc3-472b-b7f8-1bb5c51419fe" />
+
+
+
+
+
+
 
 (Add screenshots of the app interface here — capture flow, chat screen, speech output)
 
