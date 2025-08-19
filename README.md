@@ -33,13 +33,6 @@ Kids can **take a picture or upload an image**, then **chat with an AI assistant
 <img width="150" height="200" alt="IMG_2300" src="https://github.com/user-attachments/assets/4a4b909f-2bc3-472b-b7f8-1bb5c51419fe" />
 
 
-
-
-
-
-
-(Add screenshots of the app interface here — capture flow, chat screen, speech output)
-
 ---
 
 ## ▶️ How It Works
