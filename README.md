@@ -84,9 +84,9 @@ Context-learning-for-kids/
 
 ## 🚀 Getting Started
 ### **Frontend (iOS / SwiftUI)**
-Open ios-app/Context-learning.xcodeproj in Xcode.
-Launch on the simulator or a connected device.
-Ensure you’ve added NSCameraUsageDescription, NSPhotoLibraryUsageDescription, and NSSpeechRecognitionUsageDescription in Info.plist.
+- Open ios-app/Context-learning.xcodeproj in Xcode.
+- Launch on the simulator or a connected device.
+- Ensure you’ve added NSCameraUsageDescription, NSPhotoLibraryUsageDescription, and NSSpeechRecognitionUsageDescription in Info.plist.
 
 ### Backend
 ```bash
