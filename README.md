@@ -13,6 +13,19 @@ Kids can **take a picture or upload an image**, then **chat with an AI assistant
 - 🧠 Context-aware: remembers previous questions during a session.
 - 🎨 Child-friendly UI built with SwiftUI, with scrollable chat and voice input.
 
+
+##  Features-breakdown
+
+### **Backend (Python / FastAPI)**
+- **Analyze image**: object recognition + color extraction, replies with educational AI response
+- **Chat about image**: supports follow-up questions with context
+- **Text-to-speech**: returns audio replies for kid-friendly learning
+
+### **Frontend (iOS / SwiftUI)**
+- Capture or upload photos within the app
+- Interactive chat UI with voice/text input
+- Auto-scroll conversation, speech recognition & TTS for accessible interaction
+
 ---
 
 ## 🛠️ Tech Stack
@@ -70,7 +83,7 @@ Context-learning-for-kids/
 ```
 
 ## 🚀 Getting Started
-**##Frontend**
+### **Frontend (iOS / SwiftUI)**
 Open ios-app/Context-learning.xcodeproj in Xcode.
 Launch on the simulator or a connected device.
 Ensure you’ve added NSCameraUsageDescription, NSPhotoLibraryUsageDescription, and NSSpeechRecognitionUsageDescription in Info.plist.
