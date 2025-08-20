@@ -54,11 +54,23 @@ Kids can **take a picture or upload an image**, then **chat with an AI assistant
 
 ---
 
+##  Repo Structure
+Context-learning-for-kids/
+├── backend/ ← FastAPI backend (object recognition, AI responses, TTS)
+│ ├── app.py
+│ └── ...
+└── ios-app/ ← SwiftUI iOS frontend for real-time AI interaction
+├── Context-learning.xcodeproj
+└── ...
+
 ## 🚀 Getting Started
-### Frontend (iOS)
-- Open `Context-learning.xcodeproj` in Xcode.
-- Build & run on simulator or device.
+**##Frontend**
+Open ios-app/Context-learning.xcodeproj in Xcode.
+Launch on the simulator or a connected device.
+Ensure you’ve added NSCameraUsageDescription, NSPhotoLibraryUsageDescription, and NSSpeechRecognitionUsageDescription in Info.plist.
 
 ### Backend
 ```bash
-uvicorn app:app --reload --host 0.0.0.0 --port 8000
+cd backend
+pip install -r requirements.txt
+uvicorn app:app --reload --port 8000
