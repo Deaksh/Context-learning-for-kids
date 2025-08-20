@@ -55,13 +55,18 @@ Kids can **take a picture or upload an image**, then **chat with an AI assistant
 ---
 
 ##  Repo Structure
+
 Context-learning-for-kids/
-├── backend/ ← FastAPI backend (object recognition, AI responses, TTS)
-│ ├── app.py
-│ └── ...
-└── ios-app/ ← SwiftUI iOS frontend for real-time AI interaction
-├── Context-learning.xcodeproj
-└── ...
+├── ios-app/
+│   └── context-learning.xcodeproj/  # Xcode project for iOS frontend(← SwiftUI iOS frontend for real-time AI interaction)
+│       └── …                        # internal Xcode files
+│
+├── backend/
+│   ├── app.py                        # FastAPI backend(object recognition, AI responses, TTS)
+│   └── …                             # other backend files (requirements, helpers, etc.)
+│
+└── …                                 # other repo files (README.md, etc.)
+
 
 ## 🚀 Getting Started
 **##Frontend**
